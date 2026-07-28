@@ -6,3 +6,223 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  CLIENT
+  WORKER
+  PM
+  MODERATOR
+  SUPERADMIN
+}
+
+enum KycLevel {
+  NONE
+  PHONE
+  FULL
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum Specialization {
+  BACKEND
+  FRONTEND
+  FULLSTACK
+  MOBILE
+  DESIGN
+  DEVOPS
+  QA
+  OTHER
+}
+
+enum TeamStatus {
+  INCOMPLETE
+  ACTIVE
+  SUSPENDED
+}
+
+enum TeamMemberRole {
+  PM
+  MEMBER
+}
+
+enum TeamMemberStatus {
+  INVITED
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum ProjectStatus {
+  OPEN
+  IN_DEAL
+  COMPLETED
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  PENDING
+  WITHDRAWN
+  ACCEPTED
+  DECLINED
+}
+
+enum DealStatus {
+  PROPOSED
+  DECLINED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  DELIVERED
+  COMPLETED
+  DISPUTED
+  CANCELLED
+}
+
+enum AmendmentStatus {
+  PROPOSED
+  ACCEPTED
+  DECLINED
+}
+
+enum DistributionStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
+enum DisputeType {
+  D1_CRITERIA_MISMATCH
+  D2_DEADLINE_MISSED
+  D3_TEAM_GHOSTING
+  D4_UNJUST_REJECTION
+  D5_SCOPE_CREEP
+  D6_INTERNAL_PAYOUT_DISPUTE
+  D7_ABUSE
+  D8_FRAUD
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  NEED_INFO
+  RESOLVED
+}
+
+enum DisputeResolution {
+  REFUND
+  PAYOUT
+  SPLIT
+  CANCEL_AND_REFUND
+  WARNING
+  SUSPEND
+  ESCALATED
+}
+
+enum ConversationType {
+  PM_CLIENT
+  TEAM
+  DISPUTE
+}
+
+enum MessageType {
+  TEXT
+  SYSTEM
+}
+
+enum AccountType {
+  USER
+  ESCROW
+  PLATFORM_COMMISSION
+  EXTERNAL
+}
+
+enum LedgerReason {
+  DEPOSIT
+  WITHDRAWAL
+  DEAL_HOLD
+  AMENDMENT_HOLD
+  MILESTONE_PAYOUT
+  COMMISSION_CLIENT
+  COMMISSION_WORKER
+  DISPUTE_REFUND
+  DISPUTE_PAYOUT
+  DISPUTE_SPLIT
+  DEAL_CANCEL_REFUND
+  ADJUSTMENT
+}
+
+enum RatingDirection {
+  CLIENT_TO_TEAM
+  TEAM_TO_CLIENT
+}
+
+// ---------------------------------------------------------------------------
+// Identity and auth
+// ---------------------------------------------------------------------------
+
+// OTP has no model: SMS/email OTP live only in Redis
+// (kidir:otp:phone:<phone>, TTL 120s + attempt counter). The durable
+// result is User.phoneVerifiedAt / emailVerifiedAt.
+
+model User {
+  id              String          @id @default(uuid(7))
+  role            UserRole
+  status          UserStatus      @default(ACTIVE)
+  kycLevel        KycLevel        @default(NONE)
+  phone           String?         @unique
+  phoneVerifiedAt DateTime?
+  email           String?         @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String?
+  googleId        String?         @unique
+  fullName        String
+  bio             String?
+  specialization  Specialization?
+  skills          Json?
+  portfolioLinks  String[]
+  warningsCount   Int             @default(0)
+  suspendedUntil  DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  refreshTokens RefreshToken[]
+
+  @@index([role])
+  @@index([status])
+  @@index([kycLevel])
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid(7))
+  userId       String
+  tokenHash    String    @unique
+  familyId     String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+}

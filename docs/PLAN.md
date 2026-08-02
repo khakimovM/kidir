@@ -1,8 +1,10 @@
 # Kidir — Rasmiy Loyiha Plani (v1.1)
+
 > Haqiqat manbai. Barcha qarorlar Aziz tomonidan tasdiqlangan (2026-07).
 > O'zgartirishda: shu fayl + `.claude/skills/kidir-domain/SKILL.md` sinxronlanadi.
 
 ## 1. Qisqacha
+
 Kidir (kidir.net) — O'zbekiston uchun jamoaviy freelance marketplace. Yakka freelancer emas,
 PM boshchiligidagi tekshirilgan JAMOALAR loyiha oladi. Qiymat: escrow pul kafolati +
 milestone'li topshirish + yagona muloqot nuqtasi (PM) + nizo hal qilish.
@@ -11,6 +13,7 @@ Asosiy raqib: Telegram guruhlari. Javob: "Telegram'da topasiz — lekin kim kafo
 ## 2. Tasdiqlangan qarorlar jurnali
 
 ### 1-blok: Pul va biznes model
+
 - **1.1 Escrow:** v1'da `MockPaymentProvider` (fake to'lov, to'liq oqim simulyatsiyasi).
   Kod boshidan `PaymentProvider` interfeysiga: `hold() / capture() / refund()`.
   Real provayderlar: Payme, Click, Uzum (hold provayder/bank tomonida). So'nggi bosqichda
@@ -19,6 +22,7 @@ Asosiy raqib: Telegram guruhlari. Javob: "Telegram'da topasiz — lekin kim kafo
   limitlar DB config'dan — hardcode emas).
 
 ### 2-blok: MVP chegarasi
+
 - **v1:** auth+onboarding (SMS OTP Eskiz + email OTP Gmail SMTP + Google OAuth), jamoa tuzish,
   loyiha e'lon+qidiruv+forward, matnli chat (guruh + PM↔Client), deal + yengil milestone (1-5),
   SubShartnoma, escrow (mock), reyting, dispute + moderator paneli, superadmin minimal, landing,
@@ -31,6 +35,7 @@ Asosiy raqib: Telegram guruhlari. Javob: "Telegram'da topasiz — lekin kim kafo
   acceptance criteria, muddat. Har biri alohida DELIVERED→COMPLETED va alohida to'lanadi.
 
 ### 3-blok: Domen modeli
+
 - **3.1 Jamoa:** har worker jamoa yarata oladi; PM tayinlanib minimal tarkib
   (PM+backend+frontend YOKI PM+fullstack) to'lmaguncha INCOMPLETE (ariza bera olmaydi).
   Jamoada aynan 1 PM. PM aktiv deal borida chiqa olmaydi.
@@ -39,8 +44,8 @@ Asosiy raqib: Telegram guruhlari. Javob: "Telegram'da topasiz — lekin kim kafo
   counter-offer v2) → ACCEPTED: hold → PM taqsimot → HAR a'zo tasdiqlaydi → IN_PROGRESS.
   Boshqa workerlar loyihani chatga forward qiladi.
 - **3.3 Himoya:** milestone DELIVERED → client 5 kunda qabul/dispute, javobsiz = avto-COMPLETED
-  + to'lov. Deadline: 80%da ogohlantirish → o'tsa 48h grace → avto-DISPUTE (reject emas).
-  Uzaytirish: PM so'raydi, client tasdiqlaydi.
+  - to'lov. Deadline: 80%da ogohlantirish → o'tsa 48h grace → avto-DISPUTE (reject emas).
+    Uzaytirish: PM so'raydi, client tasdiqlaydi.
 - **3.4 Reyting:** client↔jamoa, faqat COMPLETED deal'dan keyin, 1-5+izoh, ikkala tomon
   baholagach yoki 14 kunda ochiladi (qasos-baho himoyasi). Jamoa reytingi = o'rtacha. Individual — v2.
 - **3.5-A:** Worker maks 3 jamoada; PM'lik faqat 1 jamoada (limitlar config'da, obuna oshiradi).
@@ -57,6 +62,7 @@ Asosiy raqib: Telegram guruhlari. Javob: "Telegram'da topasiz — lekin kim kafo
   D5 (scope creep) ning konstruktiv yechimi shu.
 
 ### 4-blok: Texnik arxitektura
+
 - **4.1 Chat:** Socket.IO + Redis adapter. Xabarlar PostgreSQL'da (haqiqat manbai), Redis faqat
   pub/sub+presence+typing. Universal `Conversation` (PM_CLIENT | TEAM | DISPUTE) + participants.
   Read receipt: oxirgi o'qilgan xabar id. Dispute'da chat moderator uchun read-only ochiladi.
@@ -71,6 +77,7 @@ Asosiy raqib: Telegram guruhlari. Javob: "Telegram'da topasiz — lekin kim kafo
   Qidiruv: Postgres full-text (Meilisearch v2). k8s YO'Q.
 
 ### 5-blok: Xavfsizlik
+
 - **5.1 Anti-fraud:** komissiya = soxta deal narxi; bir xil telefon/karta/fingerprint
   client↔worker juftliklari avtomatik flag → moderator; yangi jamoa birinchi 2 deal'da
   "yangi jamoa" badge.
@@ -80,6 +87,7 @@ Asosiy raqib: Telegram guruhlari. Javob: "Telegram'da topasiz — lekin kim kafo
   MyID — v2 yoki provayder talab qilsa.
 
 ### 6-blok: Qo'shimcha qarorlar
+
 - **6.1:** v1 to'lov fake (Mock). ⚠️ 6.5-faza: beta'dan oldin kamida 1 real provayder.
 - **6.2:** Email OTP Gmail SMTP (v1-v2).
 - **6.3:** Fayl yuklash to'liq v2 (Multer lokal + StorageProvider). v1 chat faqat matn.
@@ -90,6 +98,7 @@ Asosiy raqib: Telegram guruhlari. Javob: "Telegram'da topasiz — lekin kim kafo
   (hisobot beradi, QAROR moderatorda), superadmin=data-tahlilchi. SSE streaming.
 
 ### 7-blok: Stack qarorlari
+
 - **7.1:** npm (workspaces). pnpm EMAS.
 - **7.2:** 3 app: `apps/web` (client+worker, Next.js), `apps/admin` (moderator+superadmin,
   Next.js, admin.kidir.net), `apps/api` (NestJS). + `packages/shared`.
@@ -98,21 +107,23 @@ Asosiy raqib: Telegram guruhlari. Javob: "Telegram'da topasiz — lekin kim kafo
 - **7.4:** Prisma ORM, barcha id = UUID v7 (`@default(uuid(7))`).
 
 ## 3. Dispute taksonomiyasi (D1-D8)
-| Kod | Kim | Holat | Qarorlar |
-|---|---|---|---|
-| D1 | Client | Milestone criteria'ga mos emas | refund / payout / SPLIT (foizli) |
-| D2 | Avto/Client | Deadline o'tdi (48h grace'dan keyin) | split / refund / muddat |
-| D3 | Client | Jamoa ghosting | bekor + refund + warning |
-| D4 | PM | Client asossiz rad | payout / split |
-| D5 | PM | Scope creep | criteria'ga qaytarish / SubShartnoma taklifi |
-| D6 | A'zo | Ichki: haqim berilmadi | taqsimot bo'yicha majburiy payout, PM warning |
-| D7 | Har kim | Haqorat/nomaqbul xatti-harakat | warning / suspend |
-| D8 | Har kim | Firibgarlik/fake shubha | suspend + superadmin eskalatsiya |
-Qoidalar: dispute'da tegishli milestone puli muzlaydi (boshqalari davom etishi mumkin);
-chatlar read-only dalil; har qaror asos matni (min 100 belgi) bilan ledger+audit log'ga;
-oqim: OPEN→UNDER_REVIEW→NEED_INFO→RESOLVED; SLA: birinchi javob 3 ish kuni; apellyatsiya v2.
+
+| Kod                                                                                          | Kim         | Holat                                | Qarorlar                                      |
+| -------------------------------------------------------------------------------------------- | ----------- | ------------------------------------ | --------------------------------------------- |
+| D1                                                                                           | Client      | Milestone criteria'ga mos emas       | refund / payout / SPLIT (foizli)              |
+| D2                                                                                           | Avto/Client | Deadline o'tdi (48h grace'dan keyin) | split / refund / muddat                       |
+| D3                                                                                           | Client      | Jamoa ghosting                       | bekor + refund + warning                      |
+| D4                                                                                           | PM          | Client asossiz rad                   | payout / split                                |
+| D5                                                                                           | PM          | Scope creep                          | criteria'ga qaytarish / SubShartnoma taklifi  |
+| D6                                                                                           | A'zo        | Ichki: haqim berilmadi               | taqsimot bo'yicha majburiy payout, PM warning |
+| D7                                                                                           | Har kim     | Haqorat/nomaqbul xatti-harakat       | warning / suspend                             |
+| D8                                                                                           | Har kim     | Firibgarlik/fake shubha              | suspend + superadmin eskalatsiya              |
+| Qoidalar: dispute'da tegishli milestone puli muzlaydi (boshqalari davom etishi mumkin);      |
+| chatlar read-only dalil; har qaror asos matni (min 100 belgi) bilan ledger+audit log'ga;     |
+| oqim: OPEN→UNDER_REVIEW→NEED_INFO→RESOLVED; SLA: birinchi javob 3 ish kuni; apellyatsiya v2. |
 
 ## 4. Panellar
+
 **Moderator (apps/admin):** Arizalar inbox (filter, SLA), ariza sahifasi (deal+criteria+
 read-only chat+tarix+NEED_INFO+qaror formasi refund/payout/split-slider+asos), flaglar navbati,
 userlar read-only + vaqtincha SUSPEND (doimiy ban faqat superadmin tasdig'i — ikki kalit),
@@ -122,22 +133,24 @@ aktiv deallar, escrow summasi, komissiya, ochiq disputelar, haftalik loyihalar),
 global config jadvali (komissiya %, limitlar, SLA — DB'da). v2: grafikli analitika, AI-tahlilchi.
 
 ## 5. Roadmap
-| Faza | Nima | Vaqt |
-|---|---|---|
-| 0 | Monorepo skelet (npm ws), docker-compose, CI, shared, bazaviy Prisma, design tokenlar | 1 hafta |
-| 1 | SMS+email OTP, Google OAuth, onboarding, profillar | 1-2 hafta |
-| 2 | Jamoa CRUD+taklif, loyiha e'lon+filter+depozit-badge, PM ariza, forward | 2 hafta |
-| 3 | Chat (Socket.IO+Redis), NotificationService+email | 2 hafta |
-| 4 ⚠️ | Deal state machine, milestone, SubShartnoma, taqsimot, ledger+balans, MockProvider, BullMQ joblar | 3-4 hafta |
-| 5 | Dispute oqimi, moderator paneli, audit log, superadmin minimal | 1-2 hafta |
-| 6 | Reyting, top-jamoalar sort, landing final, Sentry, backup | 1-2 hafta |
-| 6.5 | Kamida 1 REAL to'lov provayderi integratsiyasi | provayderga bog'liq |
-| 7 | Yopiq beta: 10-15 jamoa (Mars IT), 5-10 loyiha concierge | davomiy |
+
+| Faza | Nima                                                                                              | Vaqt                |
+| ---- | ------------------------------------------------------------------------------------------------- | ------------------- |
+| 0    | Monorepo skelet (npm ws), docker-compose, CI, shared, bazaviy Prisma, design tokenlar             | 1 hafta             |
+| 1    | SMS+email OTP, Google OAuth, onboarding, profillar                                                | 1-2 hafta           |
+| 2    | Jamoa CRUD+taklif, loyiha e'lon+filter+depozit-badge, PM ariza, forward                           | 2 hafta             |
+| 3    | Chat (Socket.IO+Redis), NotificationService+email                                                 | 2 hafta             |
+| 4 ⚠️ | Deal state machine, milestone, SubShartnoma, taqsimot, ledger+balans, MockProvider, BullMQ joblar | 3-4 hafta           |
+| 5    | Dispute oqimi, moderator paneli, audit log, superadmin minimal                                    | 1-2 hafta           |
+| 6    | Reyting, top-jamoalar sort, landing final, Sentry, backup                                         | 1-2 hafta           |
+| 6.5  | Kamida 1 REAL to'lov provayderi integratsiyasi                                                    | provayderga bog'liq |
+| 7    | Yopiq beta: 10-15 jamoa (Mars IT), 5-10 loyiha concierge                                          | davomiy             |
 
 Parallel action-itemlar (1-fazadan): provayder muzokarasi (hold muddati!), yurist (escrow+
 lokalizatsiya+oferta), Eskiz akkaunt, UZ VPS+DNS, IT Park rezidentligi.
 
 ## 6. Baho va risklar (2026-07)
+
 Umumiy: 72/100. Texnik amalga oshish ~85-90%. Beta ~65-70%. 12 oyda tirik marketplace ~30-35%
 (eng katta filtr: DEMAND). Richaglar: (1) kod oldidan 20 client suhbati, (2) chuqur concierge
 beta, (3) hamkor, (4) provayder+yurist erta, (5) building-in-public YouTube.

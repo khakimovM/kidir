@@ -1,5 +1,10 @@
 import { AccountType, PrismaClient } from "@prisma/client";
 import { CONFIG_KEYS } from "@kidir/shared";
+import { loadEnv } from "../src/config/load-env";
+
+// Runs standalone via ts-node, so DATABASE_URL has to be loaded before the
+// client reads it — the Prisma CLI is not involved here.
+loadEnv();
 
 const prisma = new PrismaClient();
 

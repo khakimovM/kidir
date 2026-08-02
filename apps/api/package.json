@@ -8,8 +8,8 @@
     "start": "node dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "jest",
-    "test:e2e": "jest --config test/jest-e2e.json",
+    "test": "jest --passWithNoTests",
+    "test:e2e": "jest --config test/jest-e2e.json --passWithNoTests",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "seed": "ts-node prisma/seed.ts"

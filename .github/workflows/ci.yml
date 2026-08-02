@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: kidir
+          POSTGRES_PASSWORD: kidir
+          POSTGRES_DB: kidir
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U kidir -d kidir"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://kidir:kidir@localhost:5433/kidir?schema=public
+      REDIS_URL: redis://localhost:6379
+      API_PORT: "4000"
+      WEB_URL: http://localhost:3000
+      ADMIN_URL: http://localhost:3001
+      # CI-only throwaway secrets: never reused anywhere else.
+      JWT_ACCESS_SECRET: ci-access-secret-value-at-least-32-characters
+      JWT_REFRESH_SECRET: ci-refresh-secret-value-at-least-32-characters
+      COOKIE_DOMAIN: localhost
+      SMS_PROVIDER: mock
+      MAIL_PROVIDER: mock
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run generate --workspace=apps/api
+
+      # A throwaway database for `migrate diff` to replay migrations into;
+      # it must not be the one the app uses.
+      - name: Create shadow database
+        run: PGPASSWORD=kidir psql -h localhost -p 5433 -U kidir -d kidir -c 'CREATE DATABASE kidir_shadow;'
+
+      # Fails when schema.prisma has drifted from the committed migrations,
+      # i.e. someone edited the schema without generating a migration.
+      - name: Verify migrations match schema
+        run: |
+          npx prisma migrate diff \
+            --from-migrations apps/api/prisma/migrations \
+            --to-schema-datamodel apps/api/prisma/schema.prisma \
+            --shadow-database-url postgresql://kidir:kidir@localhost:5433/kidir_shadow \
+            --exit-code
+
+      # Applies every committed migration to a clean database: catches a
+      # migration that is broken on its own.
+      - name: Apply migrations
+        run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+
+      - name: Seed
+        run: npm run seed --workspace=apps/api
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build

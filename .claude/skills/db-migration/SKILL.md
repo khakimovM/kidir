@@ -4,6 +4,7 @@ description: Prisma schema o'zgarishi va migratsiyani xavfsiz bajaradi
 argument-hint: [o'zgarish tavsifi]
 disable-model-invocation: true
 ---
+
 O'zgarish: $ARGUMENTS
 
 1. `schema.prisma`ni o'zgartir (database.md qoidalariga rioya: BigInt pul, UUID v7 id, enum status, indexlar)

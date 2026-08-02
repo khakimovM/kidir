@@ -2,6 +2,7 @@
 paths:
   - "apps/api/**/*.ts"
 ---
+
 # API Qoidalari (NestJS)
 
 - Endpoint: REST, plural nouns — `POST /deals`, `GET /projects/:id/applications`

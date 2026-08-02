@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+/* Design tokens are intentionally identical to apps/web/app/globals.css.
+   They move to a shared stylesheet when the admin panel gets real screens
+   (phase 5). Keep both files in sync until then. */
+:root {
+  --bg: #faf9f5;
+  --surface: #ffffff;
+  --text: #191919;
+  --text-muted: #6b6a66;
+  --accent: #c15f3c;
+  --success: #2d7a4f;
+  --warning: #b8860b;
+  --danger: #b3382c;
+  --font-heading: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1915;
+    --surface: #232220;
+    --text: #ededed;
+    --text-muted: #9b9a96;
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+}

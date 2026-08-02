@@ -1,0 +1,720 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  CLIENT
+  WORKER
+  PM
+  MODERATOR
+  SUPERADMIN
+}
+
+enum KycLevel {
+  NONE
+  PHONE
+  FULL
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum Specialization {
+  BACKEND
+  FRONTEND
+  FULLSTACK
+  MOBILE
+  DESIGN
+  DEVOPS
+  QA
+  OTHER
+}
+
+enum TeamStatus {
+  INCOMPLETE
+  ACTIVE
+  SUSPENDED
+}
+
+enum TeamMemberRole {
+  PM
+  MEMBER
+}
+
+enum TeamMemberStatus {
+  INVITED
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum ProjectStatus {
+  OPEN
+  IN_DEAL
+  COMPLETED
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  PENDING
+  WITHDRAWN
+  ACCEPTED
+  DECLINED
+}
+
+enum DealStatus {
+  PROPOSED
+  DECLINED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  DELIVERED
+  COMPLETED
+  DISPUTED
+  CANCELLED
+}
+
+enum AmendmentStatus {
+  PROPOSED
+  ACCEPTED
+  DECLINED
+}
+
+enum DistributionStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
+enum DisputeType {
+  D1_CRITERIA_MISMATCH
+  D2_DEADLINE_MISSED
+  D3_TEAM_GHOSTING
+  D4_UNJUST_REJECTION
+  D5_SCOPE_CREEP
+  D6_INTERNAL_PAYOUT_DISPUTE
+  D7_ABUSE
+  D8_FRAUD
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  NEED_INFO
+  RESOLVED
+}
+
+enum DisputeResolution {
+  REFUND
+  PAYOUT
+  SPLIT
+  CANCEL_AND_REFUND
+  WARNING
+  SUSPEND
+  ESCALATED
+}
+
+enum ConversationType {
+  PM_CLIENT
+  TEAM
+  DISPUTE
+}
+
+enum MessageType {
+  TEXT
+  SYSTEM
+}
+
+enum AccountType {
+  USER
+  ESCROW
+  PLATFORM_COMMISSION
+  EXTERNAL
+}
+
+enum LedgerReason {
+  DEPOSIT
+  WITHDRAWAL
+  DEAL_HOLD
+  AMENDMENT_HOLD
+  MILESTONE_PAYOUT
+  COMMISSION_CLIENT
+  COMMISSION_WORKER
+  DISPUTE_REFUND
+  DISPUTE_PAYOUT
+  DISPUTE_SPLIT
+  DEAL_CANCEL_REFUND
+  ADJUSTMENT
+}
+
+enum RatingDirection {
+  CLIENT_TO_TEAM
+  TEAM_TO_CLIENT
+}
+
+// ---------------------------------------------------------------------------
+// Identity and auth
+// ---------------------------------------------------------------------------
+
+// OTP has no model: SMS/email OTP live only in Redis
+// (kidir:otp:phone:<phone>, TTL 120s + attempt counter). The durable
+// result is User.phoneVerifiedAt / emailVerifiedAt.
+
+model User {
+  id              String          @id @default(uuid(7))
+  role            UserRole
+  status          UserStatus      @default(ACTIVE)
+  kycLevel        KycLevel        @default(NONE)
+  phone           String?         @unique
+  phoneVerifiedAt DateTime?
+  email           String?         @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String?
+  googleId        String?         @unique
+  fullName        String
+  bio             String?
+  specialization  Specialization?
+  skills          Json?
+  portfolioLinks  String[]
+  warningsCount   Int             @default(0)
+  suspendedUntil  DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  refreshTokens RefreshToken[]
+
+  createdTeams               Team[]                    @relation("TeamCreatedBy")
+  teamMemberships            TeamMember[]              @relation("TeamMemberUser")
+  teamInvitesSent            TeamMember[]              @relation("TeamMemberInvitedBy")
+  projectsAsClient           Project[]                 @relation("ProjectClient")
+  projectApplicationsAsPm    ProjectApplication[]      @relation("ProjectApplicationPm")
+  dealsAsClient              Deal[]                    @relation("DealClient")
+  dealsAsPm                  Deal[]                    @relation("DealPm")
+  amendmentsProposed         Amendment[]               @relation("AmendmentProposedBy")
+  distributionsCreated       Distribution[]            @relation("DistributionCreatedBy")
+  distributionItems          DistributionItem[]        @relation("DistributionItemUser")
+  accounts                   Account[]
+  ledgerEntriesActed         LedgerEntry[]             @relation("LedgerEntryActor")
+  configsUpdated             Config[]                  @relation("ConfigUpdatedBy")
+  conversationParticipations ConversationParticipant[] @relation("ConversationParticipantUser")
+  messagesSent               Message[]                 @relation("MessageSender")
+  disputesOpened             Dispute[]                 @relation("DisputeOpenedBy")
+  disputesAssigned           Dispute[]                 @relation("DisputeAssignedModerator")
+  ratingsGiven               Rating[]                  @relation("RatingRater")
+  notifications              Notification[]            @relation("NotificationUser")
+  auditLogsActed             AuditLog[]                @relation("AuditLogActor")
+
+  @@index([role])
+  @@index([status])
+  @@index([kycLevel])
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid(7))
+  userId       String
+  tokenHash    String    @unique
+  familyId     String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Teams
+// ---------------------------------------------------------------------------
+
+model Team {
+  id                  String     @id @default(uuid(7))
+  name                String
+  slug                String     @unique
+  description         String?
+  status              TeamStatus @default(INCOMPLETE)
+  plan                String     @default("free")
+  completedDealsCount Int        @default(0)
+  ratingAvg           Decimal?   @db.Decimal(3, 2)
+  ratingCount         Int        @default(0)
+  createdById         String
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  deletedAt           DateTime?
+
+  createdBy     User                 @relation("TeamCreatedBy", fields: [createdById], references: [id])
+  members       TeamMember[]
+  applications  ProjectApplication[]
+  deals         Deal[]
+  conversations Conversation[]
+
+  @@index([createdById])
+  @@index([status])
+}
+
+// TeamMember: exactly-one-active-PM-per-team is enforced by a raw-SQL
+// partial unique index added in the init migration (not expressible here).
+model TeamMember {
+  id             String           @id @default(uuid(7))
+  teamId         String
+  userId         String
+  role           TeamMemberRole   @default(MEMBER)
+  specialization Specialization
+  status         TeamMemberStatus @default(INVITED)
+  invitedById    String?
+  joinedAt       DateTime?
+  leftAt         DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  team      Team  @relation(fields: [teamId], references: [id])
+  user      User  @relation("TeamMemberUser", fields: [userId], references: [id])
+  invitedBy User? @relation("TeamMemberInvitedBy", fields: [invitedById], references: [id])
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@index([teamId, status])
+  @@index([teamId, role])
+}
+
+// ---------------------------------------------------------------------------
+// Projects and applications
+// ---------------------------------------------------------------------------
+
+model Project {
+  id             String        @id @default(uuid(7))
+  clientId       String
+  title          String
+  description    String
+  budgetMinTiyin BigInt?
+  budgetMaxTiyin BigInt?
+  depositTiyin   BigInt        @default(0)
+  status         ProjectStatus @default(OPEN)
+  deadline       DateTime?
+  skills         String[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  client        User                 @relation("ProjectClient", fields: [clientId], references: [id])
+  applications  ProjectApplication[]
+  deals         Deal[]
+  conversations Conversation[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([status, createdAt])
+}
+
+model ProjectApplication {
+  id          String            @id @default(uuid(7))
+  projectId   String
+  teamId      String
+  pmUserId    String
+  priceTiyin  BigInt
+  coverLetter String
+  status      ApplicationStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  team    Team    @relation(fields: [teamId], references: [id])
+  pmUser  User    @relation("ProjectApplicationPm", fields: [pmUserId], references: [id])
+
+  @@unique([projectId, teamId])
+  @@index([teamId])
+  @@index([pmUserId])
+  @@index([projectId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Deal, milestone, amendment, distribution
+// ---------------------------------------------------------------------------
+
+model Deal {
+  id               String     @id @default(uuid(7))
+  projectId        String
+  teamId           String
+  clientId         String
+  pmId             String
+  totalAmountTiyin BigInt
+  deadline         DateTime
+  status           DealStatus @default(PROPOSED)
+  declineComment   String?
+  acceptedAt       DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  deletedAt        DateTime?
+
+  project Project @relation(fields: [projectId], references: [id])
+  team    Team    @relation(fields: [teamId], references: [id])
+  client  User    @relation("DealClient", fields: [clientId], references: [id])
+  pm      User    @relation("DealPm", fields: [pmId], references: [id])
+
+  milestones    Milestone[]
+  amendments    Amendment[]
+  distributions Distribution[]
+  ledgerEntries LedgerEntry[]
+  disputes      Dispute[]
+  ratings       Rating[]
+  conversations Conversation[]
+
+  @@index([projectId])
+  @@index([teamId, status])
+  @@index([clientId, status])
+  @@index([pmId])
+  @@index([status])
+}
+
+model Milestone {
+  id                 String          @id @default(uuid(7))
+  dealId             String
+  amendmentId        String?
+  orderIndex         Int
+  title              String
+  amountTiyin        BigInt
+  acceptanceCriteria String
+  deadline           DateTime
+  status             MilestoneStatus @default(PENDING)
+  deliveredAt        DateTime?
+  completedAt        DateTime?
+  autoCompleteAt     DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  deletedAt          DateTime?
+
+  deal      Deal       @relation(fields: [dealId], references: [id])
+  amendment Amendment? @relation(fields: [amendmentId], references: [id])
+
+  ledgerEntries LedgerEntry[]
+  disputes      Dispute[]
+
+  @@unique([dealId, orderIndex])
+  @@index([dealId])
+  @@index([status])
+  @@index([deadline])
+  @@index([amendmentId])
+  @@index([status, autoCompleteAt])
+}
+
+// Append-only: the single legitimate mutation (PROPOSED -> ACCEPTED|DECLINED
+// + respondedAt) is guarded in the service layer, not a DB trigger.
+model Amendment {
+  id                 String          @id @default(uuid(7))
+  dealId             String
+  proposedById       String
+  amountTiyin        BigInt
+  extraDays          Int
+  acceptanceCriteria String
+  status             AmendmentStatus @default(PROPOSED)
+  respondedAt        DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  deal       Deal @relation(fields: [dealId], references: [id])
+  proposedBy User @relation("AmendmentProposedBy", fields: [proposedById], references: [id])
+
+  milestones    Milestone[]
+  distributions Distribution[]
+  ledgerEntries LedgerEntry[]
+
+  @@index([dealId])
+  @@index([proposedById])
+  @@index([status])
+}
+
+// Distribution: exactly-one-base-distribution-per-deal (amendmentId IS NULL)
+// is enforced by a raw-SQL partial unique index added in the init migration.
+model Distribution {
+  id          String             @id @default(uuid(7))
+  dealId      String
+  amendmentId String?
+  createdById String
+  status      DistributionStatus @default(PENDING)
+  activatedAt DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  deal      Deal       @relation(fields: [dealId], references: [id])
+  amendment Amendment? @relation(fields: [amendmentId], references: [id])
+  createdBy User       @relation("DistributionCreatedBy", fields: [createdById], references: [id])
+
+  items DistributionItem[]
+
+  @@unique([dealId, amendmentId])
+  @@index([dealId])
+  @@index([amendmentId])
+  @@index([createdById])
+  @@index([status])
+}
+
+model DistributionItem {
+  id             String    @id @default(uuid(7))
+  distributionId String
+  userId         String
+  amountTiyin    BigInt
+  roleNote       String?
+  confirmedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  distribution Distribution @relation(fields: [distributionId], references: [id])
+  user         User         @relation("DistributionItemUser", fields: [userId], references: [id])
+
+  @@unique([distributionId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Money (double-entry)
+// ---------------------------------------------------------------------------
+
+model Account {
+  id           String      @id @default(uuid(7))
+  type         AccountType
+  userId       String?
+  balanceTiyin BigInt      @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user User? @relation(fields: [userId], references: [id])
+
+  debitEntries  LedgerEntry[] @relation("LedgerDebitAccount")
+  creditEntries LedgerEntry[] @relation("LedgerCreditAccount")
+
+  @@unique([userId, type])
+}
+
+// Append-only: BEFORE UPDATE OR DELETE trigger added in the init migration
+// rejects any mutation at the DB level.
+model LedgerEntry {
+  id              String       @id @default(uuid(7))
+  txId            String
+  debitAccountId  String
+  creditAccountId String
+  amountTiyin     BigInt
+  reason          LedgerReason
+  dealId          String?
+  milestoneId     String?
+  amendmentId     String?
+  disputeId       String?
+  idempotencyKey  String?      @unique
+  note            String?
+  actorUserId     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  debitAccount  Account    @relation("LedgerDebitAccount", fields: [debitAccountId], references: [id])
+  creditAccount Account    @relation("LedgerCreditAccount", fields: [creditAccountId], references: [id])
+  deal          Deal?      @relation(fields: [dealId], references: [id])
+  milestone     Milestone? @relation(fields: [milestoneId], references: [id])
+  amendment     Amendment? @relation(fields: [amendmentId], references: [id])
+  dispute       Dispute?   @relation(fields: [disputeId], references: [id])
+  actorUser     User?      @relation("LedgerEntryActor", fields: [actorUserId], references: [id])
+
+  @@index([txId])
+  @@index([debitAccountId])
+  @@index([creditAccountId])
+  @@index([dealId])
+  @@index([milestoneId])
+  @@index([amendmentId])
+  @@index([disputeId])
+  @@index([reason])
+  @@index([createdAt])
+}
+
+model Config {
+  id          String   @id @default(uuid(7))
+  key         String   @unique
+  value       Json
+  description String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  updatedBy User? @relation("ConfigUpdatedBy", fields: [updatedById], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id        String           @id @default(uuid(7))
+  type      ConversationType
+  projectId String?
+  teamId    String?
+  dealId    String?
+  disputeId String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  deletedAt DateTime?
+
+  project Project? @relation(fields: [projectId], references: [id])
+  team    Team?    @relation(fields: [teamId], references: [id])
+  deal    Deal?    @relation(fields: [dealId], references: [id])
+  dispute Dispute? @relation(fields: [disputeId], references: [id])
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@unique([projectId, teamId])
+  @@unique([disputeId])
+}
+
+model ConversationParticipant {
+  id                String   @id @default(uuid(7))
+  conversationId    String
+  userId            String
+  lastReadMessageId String?
+  isReadOnly        Boolean  @default(false)
+  joinedAt          DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  user         User         @relation("ConversationParticipantUser", fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+// body always stores the original text; masking of phone numbers happens
+// at serialization time until the deal is signed (moderator/dispute
+// evidence needs the original).
+model Message {
+  id             String      @id @default(uuid(7))
+  conversationId String
+  senderId       String?
+  type           MessageType @default(TEXT)
+  body           String
+  hasPhoneNumber Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User?        @relation("MessageSender", fields: [senderId], references: [id])
+
+  @@index([conversationId, id])
+}
+
+// ---------------------------------------------------------------------------
+// Dispute, rating, notification, audit
+// ---------------------------------------------------------------------------
+
+model Dispute {
+  id                  String             @id @default(uuid(7))
+  dealId              String
+  milestoneId         String?
+  type                DisputeType
+  status              DisputeStatus      @default(OPEN)
+  openedById          String
+  assignedModeratorId String?
+  description         String
+  resolution          DisputeResolution?
+  resolutionNote      String?
+  splitClientBps      Int?
+  firstResponseDueAt  DateTime?
+  resolvedAt          DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  deletedAt           DateTime?
+
+  deal              Deal       @relation(fields: [dealId], references: [id])
+  milestone         Milestone? @relation(fields: [milestoneId], references: [id])
+  openedBy          User       @relation("DisputeOpenedBy", fields: [openedById], references: [id])
+  assignedModerator User?      @relation("DisputeAssignedModerator", fields: [assignedModeratorId], references: [id])
+
+  ledgerEntries LedgerEntry[]
+  conversations Conversation[]
+
+  @@index([dealId])
+  @@index([milestoneId])
+  @@index([openedById])
+  @@index([assignedModeratorId, status])
+  @@index([status, firstResponseDueAt])
+}
+
+model Rating {
+  id          String          @id @default(uuid(7))
+  dealId      String
+  direction   RatingDirection
+  raterId     String
+  score       Int
+  comment     String
+  publishedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  deal  Deal @relation(fields: [dealId], references: [id])
+  rater User @relation("RatingRater", fields: [raterId], references: [id])
+
+  @@unique([dealId, direction])
+  @@index([raterId])
+}
+
+model Notification {
+  id        String    @id @default(uuid(7))
+  userId    String
+  type      String
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation("NotificationUser", fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+  @@index([userId, id])
+}
+
+// Append-only: BEFORE UPDATE OR DELETE trigger added in the init migration
+// rejects any mutation at the DB level.
+model AuditLog {
+  id         String   @id @default(uuid(7))
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  actor User? @relation("AuditLogActor", fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+}

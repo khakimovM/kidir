@@ -3,6 +3,7 @@ paths:
   - "apps/api/prisma/**"
   - "apps/api/src/**/repositories/**"
 ---
+
 # Database Qoidalari (PostgreSQL + Prisma)
 
 - Har model: `id String @id @default(uuid(7))` (UUID v7 — vaqt-tartibli, index-samarali),

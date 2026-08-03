@@ -2,14 +2,19 @@
 
 ## Worktree tayyorlash (asosiy repo'dan)
 
-```bash
-git worktree add ../kidir-infra -b feature/phase-1-providers main
-cd ../kidir-infra
+Windows `cmd.exe` da:
+
+```bat
+cd C:\Users\Aziz\Desktop\kidir
+git worktree add ..\kidir-infra -b feature/phase-1-providers main
+cd ..\kidir-infra
 npm install
 npm run generate --workspace=apps/api
-cp ../kidir/.env .env
+copy ..\kidir\.env .env
 claude
 ```
+
+PowerShell'da oxirgi ikki qatordan biri farq qiladi: `Copy-Item ..\kidir\.env .env`
 
 ## Prompt (shu matnni Claude'ga ber)
 

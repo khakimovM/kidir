@@ -86,9 +86,6 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
 
-      - name: Seed
-        run: npm run seed --workspace=apps/api
-
       - name: Lint
         run: npm run lint
 
@@ -100,3 +97,8 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Runs last on purpose: seed.ts imports @kidir/shared, which resolves to
+      # packages/shared/dist — a build output, absent from a fresh checkout.
+      - name: Seed
+        run: npm run seed --workspace=apps/api

@@ -71,9 +71,17 @@ jobs:
 
       - run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
 
+      # Six sequential runs per job, eight jobs: 48 attempts per push.
+      # TURBO_FORCE stops the second run from replaying the first one's cache.
       - name: Test
         id: test
-        run: npm run test 2>&1 | tee test-output.log
+        env:
+          TURBO_FORCE: "true"
+        run: |
+          for run in 1 2 3 4 5 6; do
+            echo "===== attempt ${{ matrix.attempt }} run $run ====="
+            npm run test 2>&1 | tee -a test-output.log
+          done
 
       - name: Publish test output on failure
         if: failure() && steps.test.outcome == 'failure'

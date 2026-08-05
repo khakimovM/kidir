@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    # TEMPORARY: fix/ci-test-step is here only to reproduce the failing Test
-    # step on a branch. Remove before merging.
-    branches: [main, fix/ci-test-step]
+    branches: [main]
   pull_request:
 
 concurrency:

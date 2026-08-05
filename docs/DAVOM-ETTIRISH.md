@@ -24,26 +24,41 @@ SSRF allowlist, cookie bayroqlari — hammasi sinovdan o'tgan.
 
 ### ⚠️ Ochiq muammo (birinchi navbatda shu)
 
-**GitHub Actions'da `Test` qadami yiqilyapti**, lokalda esa 54/54 test o'tadi.
+**GitHub Actions'da `Test` qadami goh-goh yiqilyapti**, lokalda esa 54/54 test o'tadi.
+Tayyor branch: `fix/ci-test-step` (PR ochilishi kerak).
 
-Lokalda takrorlab bo'lmadi. Chetlab o'tilgan taxminlar:
+2026-08-05 dagi tekshiruv nimani ko'rsatdi:
 
-- seed qilinmagan toza baza — o'tdi
-- `NODE_ENV=test` + CI env kalitlari — o'tdi
-- turbo keshi maskalayapti — `npm run test -- --force` bilan ham o'tdi
-- parallel suitelar xalaqiti — `--maxWorkers=2` bilan o'tdi
+- Yiqilgani **`apps/api` Jest suite'i** (`packages/shared` vitest emas) — CI annotation'idan:
+  `command (.../apps/api) npm run test exited (1)`.
+- **Turg'un emas.** `main` da 2/2 yiqildi, **aynan bir xil test kodi** bilan
+  `fix/ci-test-step` branch'ida **59/59 o'tdi** (11 ta oddiy run + 48 urinishlik
+  matritsa). Ya'ni ayb kod mantiqida emas — vaqt/parallellikda.
+- Yiqilgan `Test` qadami har ikkalasida ham **5 soniya**, o'tganida — 3 soniya.
+  Demak timeout emas, tez yiqilish.
+- Chetlab o'tilgan taxminlar: `packages/shared/dist`, CI env kalitlari,
+  Postgres/Redis versiyalari (ikkalasida ham `17-alpine` / `7-alpine`),
+  `kidir_test` bazasi (hech qayerda ishlatilmaydi), seed bog'liqligi
+  (OTP spec config qatorlarini o'zi yozadi).
+- Lokalda ketma-ket 10 ta run va 1.5s qattiq timeout bilan ham takrorlanmadi.
 
-Yiqilgan run: https://github.com/khakimovM/kidir/actions/runs/30975007112
+**Aniq sabab hali noma'lum — log matni kerak.** Actions log'lari public repo'da ham
+auth so'raydi (`403`). Shuning uchun `fix/ci-test-step` da:
 
-CI log'lari `403` qaytaradi (Actions log'lari auth talab qiladi). Davom etish uchun
-**xato matni kerak** — uni olishning yo'llari:
+1. `Test` qadami chiqishi `$GITHUB_STEP_SUMMARY` ga yoziladi → keyingi yiqilish
+   run sahifasida **auth'siz** o'qiladi.
+2. `apps/api` testlari `--runInBand` bilan (ikkala spec bitta Postgres/Redis ustida
+   raqobatlashmasin) va `testTimeout: 30000` bilan — bu **himoya chorasi, diagnoz emas**.
+
+Log'ni to'g'ridan-to'g'ri o'qish uchun (tavsiya):
 
 ```bat
 winget install --id GitHub.cli
 ```
 
-keyin Claude sessiyasida `! gh auth login`, shundan so'ng men log'ni o'zim o'qiy olaman.
-Yoki yuqoridagi sahifani ochib `Test` qadamining xatosini menga tashlang.
+keyin Claude sessiyasida `! gh auth login` → `gh run view <run-id> --log-failed`.
+
+Yiqilgan run'lar: 30975007112, 30977109697.
 
 ---
 

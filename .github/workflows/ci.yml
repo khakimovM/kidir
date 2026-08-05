@@ -93,7 +93,22 @@ jobs:
         run: npm run typecheck
 
       - name: Test
-        run: npm run test
+        id: test
+        run: npm run test 2>&1 | tee test-output.log
+
+      # Actions logs need authentication even on a public repo, so a failure
+      # here used to be unreadable from outside. The step summary is part of
+      # the public run page.
+      - name: Publish test output on failure
+        if: failure() && steps.test.outcome == 'failure'
+        run: |
+          {
+            echo '## Test step output'
+            echo
+            echo '```'
+            tail -n 400 test-output.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build
         run: npm run build

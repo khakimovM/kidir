@@ -74,8 +74,23 @@ async function expectDomainError(
   throw new Error(`expected the call to reject with ${code}`);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * The TTL is enforced by Redis, whose clock cannot be faked from here. Waiting
+ * on the observable condition instead of on a fixed duration is what keeps the
+ * expiry tests from depending on how loaded the machine is.
+ */
+async function waitForExpiry(redis: Redis, key: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+
+  while (Date.now() < deadline) {
+    if ((await redis.exists(key)) === 0) {
+      return;
+    }
+
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  throw new Error(`"${key}" kaliti kutilgan vaqtda o'chmadi`);
 }
 
 describe("RedisOtpService", () => {
@@ -189,6 +204,24 @@ describe("RedisOtpService", () => {
       });
     });
 
+    /**
+     * Storing the code only when none is live is a single atomic script, so
+     * two "send me a code" requests racing cannot both win — otherwise the
+     * second SMS would invalidate the code the user is already reading.
+     */
+    it("issues exactly one code when two requests race", async () => {
+      const outcomes = await Promise.allSettled([
+        service.issue("phone", phone),
+        service.issue("phone", phone),
+      ]);
+
+      expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+      expect(sms.sent).toHaveLength(1);
+
+      const code = extractCode(sms.sent[0]?.text ?? "");
+      await expect(service.verify("phone", phone, code)).resolves.toBeUndefined();
+    });
+
     it("keeps leading zeros, so every code is exactly six digits", async () => {
       const codes: string[] = [];
 
@@ -261,9 +294,30 @@ describe("RedisOtpService", () => {
 
     it("reports OTP_EXPIRED once the code's ttl has lapsed", async () => {
       const code = await issuedCode();
-      await redis.pexpire(codeKey("phone", phone), 10);
-      await sleep(60);
+      await redis.pexpire(codeKey("phone", phone), 1);
+      await waitForExpiry(redis, codeKey("phone", phone));
 
+      await expectDomainError(service.verify("phone", phone, code), ERROR_CODES.OTP_EXPIRED);
+    });
+
+    /**
+     * Counting the attempt and reading the code back happen in one Lua call
+     * precisely so parallel guesses cannot each see the pre-increment counter
+     * and buy themselves an extra try.
+     */
+    it("spends one attempt per guess even when the guesses arrive together", async () => {
+      const code = await issuedCode();
+      const wrong = wrongCode(code);
+
+      const outcomes = await Promise.allSettled([
+        service.verify("phone", phone, wrong),
+        service.verify("phone", phone, wrong),
+        service.verify("phone", phone, wrong),
+      ]);
+
+      expect(outcomes.every((outcome) => outcome.status === "rejected")).toBe(true);
+      // Three wrong guesses is exactly the budget, so the code is gone.
+      await expect(redis.exists(codeKey("phone", phone))).resolves.toBe(0);
       await expectDomainError(service.verify("phone", phone, code), ERROR_CODES.OTP_EXPIRED);
     });
 

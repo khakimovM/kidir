@@ -1,26 +1,55 @@
 # Davom ettirish qo'llanmasi
 
 > Ishni to'xtatib, keyinroq (ertaga, bir haftadan keyin) qaytganingizda shu fayldan boshlang.
-> Oxirgi yangilanish: 2026-08-07, Faza 1 To'lqin 3 boshlangan holat.
+> Oxirgi yangilanish: 2026-08-07, **Faza 1 tugagan**, Faza 1.5 (dizayn) boshlanishga tayyor.
 
 ---
 
 ## 1. Hozir qayerdamiz
 
-**Faza 1 (auth) — To'lqin 3 (sifat) ketmoqda.**
+**Faza 1 (auth) TUGADI.** Kod, testlar, audit va audit topilmalarining
+YUQORI darajadagilari — hammasi `main` da.
 
 | Nima            | Holat                                                              |
 | --------------- | ------------------------------------------------------------------ |
 | Faza 0          | ✅ tugagan (monorepo, prisma, admin, CI)                           |
 | Faza 1 poydevor | ✅ shared kontraktlar, common qatlam, modul shell'lari             |
 | Faza 1 kod      | ✅ INFRA + BACKEND + FRONTEND yozilgan va `main` ga merge qilingan |
-| Faza 1 sifat    | 🔄 **To'lqin 3 ketmoqda** — TEST va AUDIT terminallari ishlayapti  |
+| Faza 1 sifat    | ✅ 274 test, xavfsizlik auditi + kod review, YUQORI fixlar         |
+| Faza 1.5 dizayn | ⬜ **keyingi qadam** — `docs/phase-1-briefs/07-design.md`          |
 
-`main` = `c0e9b48`, GitHub'da (`origin/main` bilan bir xil).
+**Testlar:** 256 unit + 24 e2e. `npm run test` va `npm run test:e2e` — ikkalasi
+ham CI'da ishlaydi.
 
 **Ishlayotgani jonli tekshirilgan:** ro'yxatdan o'tish → SMS OTP → email OTP → login →
 refresh rotation → reuse detection → logout. CSRF, rate limit, user enumeration himoyasi,
 SSRF allowlist, cookie bayroqlari — hammasi sinovdan o'tgan.
+
+### Audit natijasi (2026-08-07)
+
+To'liq hisobotlar: `docs/reviews/phase-1-security.md`, `docs/reviews/phase-1-code.md`.
+Baho 8/10 va 8.5/10, **KRITIK topilma yo'q**.
+
+Tuzatilgan (YUQORI):
+
+- **Guardlar global emas edi** — `@UseGuards` yozishni unutgan har yangi
+  controller jimgina ochiq qolardi. Endi `APP_GUARD`, default "yopiq",
+  regression testi bilan (`apps/api/test/global-guards.e2e-spec.ts`).
+- **Google OAuth `state` brauzerga bog'lanmagan edi** — qurbonni hujumchining
+  akkauntiga kiritish mumkin edi. Endi httpOnly cookie bilan juftlanadi.
+- **`trust proxy` yo'q edi** — nginx ortida butun platforma bitta 5/min
+  chelakni bo'lishardi. Endi `TRUST_PROXY_HOPS` env'dan.
+- **`any` taqiqi `apps/web` ga yetib bormasdi** — eslint qoidasi qo'shildi.
+- `enableShutdownHooks()` — Redis/Prisma endi toza yopiladi.
+
+⚠️ **Ochiq qolgan, qaror kutmoqda:** `attachPhone` (`auth.service.ts:200`) da
+`user.phone === null` sharti yo'q, ya'ni u amalda cheklovsiz telefon-almashtirish
+endpointi — parolsiz va eski raqamga xabarsiz. Payout SMS-tasdiqlangan telefonga
+bog'langani uchun bu pul kanaliga tegadi (hisobotdagi H-2). Savol: foydalanuvchi
+telefonini umuman o'zgartira olishi kerakmi? Yo'q bo'lsa — bir qatorlik fix;
+ha bo'lsa — parol tasdiqi bilan alohida oqim (Faza 2).
+
+Qolgan O'RTA/PAST topilmalar hisobotlarda roadmap bo'yicha tartiblangan.
 
 ### ✅ Yopilgan: CI `Test` qadamining goh-goh yiqilishi
 
@@ -111,73 +140,49 @@ Sening rolingda: `packages/shared/**`, `apps/api/prisma/**`, `app.module.ts`,
 `main.ts`, `package.json`, `docs/**` senga tegishli — feature terminallar bularga
 tegmaydi. Merge'ni ham sen qilasan.
 
-Birinchi vazifa: To'lqin 3 ni boshqarish — TEST va AUDIT terminallari ishini
-kuzatish, tugagach merge qilish. Menga o'zbek tilida javob ber.
+Birinchi vazifa: Faza 1.5 (dizayn) ni boshlash — `docs/phase-1-briefs/07-design.md`.
+Menga o'zbek tilida javob ber.
 
 ---
 
 ---
 
-## 4. To'lqin 3 terminallari (HOZIR ISHLAYAPTI)
+## 4. Keyingi qadam — Faza 1.5 (dizayn)
 
-Bu ikkitasi **parallel** ishlaydi, bir-biriga tegmaydi.
-
-### TEST terminali — `..\kidir-test`, branch `test/phase-1-coverage`
+Yakka terminal, parallel emas: u `apps/web/**` ning katta qismini qayta yozadi,
+shuning uchun ishlayotganda boshqa hech kim frontend'ga tegmaydi.
 
 ```bat
 cd C:\Users\Aziz\Desktop\kidir
-git worktree add ..\kidir-test -b test/phase-1-coverage main
-cd ..\kidir-test
+git worktree add ..\kidir-design -b design/phase-1-5 main
+cd ..\kidir-design
 npm install
 npm run generate --workspace=apps/api
 copy ..\kidir\.env .env
 claude
 ```
 
-Prompt: `docs/phase-1-briefs/05-test.md` faylidagi "Prompt" bo'limi.
+Prompt: `docs/phase-1-briefs/07-design.md` faylidagi "Prompt" bo'limi.
 
-> Test yurgizish uchun Docker ko'tarilgan bo'lishi SHART (`docker compose up -d`) —
-> Prisma mock qilinmaydi, testlar haqiqiy Postgres va Redis'ga boradi.
+Asosiy ish — landing sahifasi (hozirgisi 25 qatorlik placeholder), sayt karkasi
+va Faza 2-4 ekranlari uchun dizayn tili.
 
-### AUDIT terminali — `..\kidir-audit`, branch `audit/phase-1`
-
-```bat
-cd C:\Users\Aziz\Desktop\kidir
-git worktree add ..\kidir-audit -b audit/phase-1 main
-cd ..\kidir-audit
-claude
-```
-
-`npm install` shart emas — bu terminal faqat o'qiydi va hisobot yozadi.
-
-Prompt: `docs/phase-1-briefs/06-audit.md` faylidagi "Prompt" bo'limi.
-
-> **Muhim:** o'tgan safar ikkita terminal ishni **commit qilmay** qoldirgan edi.
-> Promptga qo'shimcha qilib ayting: "tugagach ishingni albatta commit qil".
-
-### To'lqin 3 tugagach (ORKESTR qiladi)
-
-1. `test/phase-1-coverage` ni `main` ga merge (faqat spec fayllar — konflikt yo'q).
-2. AUDIT hisobotlarini (`docs/reviews/phase-1-*.md`) o'qib, topilmalarni fix
-   vazifalariga taqsimlash.
-3. Har merge'dan keyin `npm run lint && npm run typecheck && npm run test`,
-   so'ng **ilovani haqiqatan ko'tarib ko'rish**.
-4. Worktree'larni tozalash (5-bo'lim).
+> Dev server: `npm run dev --workspace=apps/web`. Docker ko'tarilgan bo'lsin
+> (`docker compose up -d`) — API kerak bo'lganda.
 
 ---
 
 ## 5. Tugagan worktree'larni tozalash
 
-To'lqin 2 terminallari (backend, infra, frontend) tozalangan — worktree'lari
-o'chirilgan, branchlari `main` ga merge bo'lgani uchun olib tashlangan.
+To'lqin 2 (backend, infra, frontend) va To'lqin 3 (test, audit) terminallari
+tozalangan.
 
-To'lqin 3 tugagach xuddi shunday qiling:
+Dizayn terminali tugagach xuddi shunday qiling:
 
 ```bat
 cd C:\Users\Aziz\Desktop\kidir
-git worktree remove ..\kidir-test
-git worktree remove ..\kidir-audit
-git branch -d test/phase-1-coverage audit/phase-1
+git worktree remove ..\kidir-design
+git branch -d design/phase-1-5
 git worktree list
 ```
 
@@ -197,6 +202,14 @@ Har faza uchun bir xil naqsh:
 Har merge'dan keyin: `npm run lint && npm run typecheck && npm run test`, so'ng
 **ilovani haqiqatan ko'tarib ko'rish** — merge buglari faqat shunda chiqadi
 (Faza 1 da aynan shunday bug topildi: `JwtGuard` DI xatosi).
+
+Faza 1 da o'rganilgan ikki narsa:
+
+- **Terminal ish chiqarganini `git log` bilan emas, `git status` bilan ham
+  tekshiring.** AUDIT terminali "tugadim" degan holatda hech narsa commit
+  qilmagan edi va bu faqat qo'lda tekshirganda ma'lum bo'ldi.
+- **`main` yangilangach, ishlayotgan terminallarga rebase qilishni ayting.**
+  TEST terminali eski `main` dan olingani uchun `--runInBand` siz ishlagan.
 
 ---
 

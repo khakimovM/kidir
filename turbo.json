@@ -14,6 +14,9 @@
     "test": {
       "dependsOn": ["^build"]
     },
+    "test:e2e": {
+      "dependsOn": ["^build"]
+    },
     "dev": {
       "cache": false,
       "persistent": true
@@ -28,6 +31,9 @@
       "dependsOn": ["generate", "^build"]
     },
     "api#test": {
+      "dependsOn": ["generate", "^build"]
+    },
+    "api#test:e2e": {
       "dependsOn": ["generate", "^build"]
     },
     "api#build": {

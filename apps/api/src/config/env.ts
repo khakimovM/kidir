@@ -16,6 +16,19 @@ const envSchema = z.object({
   // web and admin so a single session works on both subdomains.
   COOKIE_DOMAIN: z.string().default("localhost"),
 
+  // How many reverse proxies sit in front of the API. Behind nginx on the UZ
+  // VPS this is 1; in dev nothing forwards, so it stays 0.
+  //
+  // It has to be a count rather than a boolean: `trust proxy: true` makes
+  // Express believe the whole X-Forwarded-For chain, and since anyone can send
+  // that header, a client would be able to pick its own rate-limit bucket. The
+  // count says how many hops at the end of the chain we actually control.
+  //
+  // Getting this wrong is not cosmetic — with 0 hops behind a real proxy every
+  // request looks like it comes from the proxy, so the whole platform shares
+  // one 5/min auth bucket and RefreshToken.ip records nothing useful.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+
   // Provider selection: business code injects the interface, never the
   // implementation. v1 ships mock SMS (no Eskiz account yet).
   SMS_PROVIDER: z.enum(["mock", "eskiz"]).default("mock"),

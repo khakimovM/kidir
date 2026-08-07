@@ -1,31 +1,30 @@
 # Davom ettirish qo'llanmasi
 
 > Ishni to'xtatib, keyinroq (ertaga, bir haftadan keyin) qaytganingizda shu fayldan boshlang.
-> Oxirgi yangilanish: 2026-08-05, Faza 1 To'lqin 2 tugagan holat.
+> Oxirgi yangilanish: 2026-08-07, Faza 1 To'lqin 3 boshlangan holat.
 
 ---
 
 ## 1. Hozir qayerdamiz
 
-**Faza 1 (auth) — To'lqin 2 tugadi.** Kod yozilgan, merge qilingan, lokalda ishlaydi.
+**Faza 1 (auth) — To'lqin 3 (sifat) ketmoqda.**
 
 | Nima            | Holat                                                              |
 | --------------- | ------------------------------------------------------------------ |
 | Faza 0          | ✅ tugagan (monorepo, prisma, admin, CI)                           |
 | Faza 1 poydevor | ✅ shared kontraktlar, common qatlam, modul shell'lari             |
 | Faza 1 kod      | ✅ INFRA + BACKEND + FRONTEND yozilgan va `main` ga merge qilingan |
-| Faza 1 sifat    | ⬜ **To'lqin 3 boshlanmagan** — TEST va AUDIT terminallari         |
+| Faza 1 sifat    | 🔄 **To'lqin 3 ketmoqda** — TEST va AUDIT terminallari ishlayapti  |
 
-`main` = `fff3fc6`, GitHub'da (`origin/main` bilan bir xil).
+`main` = `c0e9b48`, GitHub'da (`origin/main` bilan bir xil).
 
 **Ishlayotgani jonli tekshirilgan:** ro'yxatdan o'tish → SMS OTP → email OTP → login →
 refresh rotation → reuse detection → logout. CSRF, rate limit, user enumeration himoyasi,
 SSRF allowlist, cookie bayroqlari — hammasi sinovdan o'tgan.
 
-### ⚠️ Ochiq muammo (birinchi navbatda shu)
+### ✅ Yopilgan: CI `Test` qadamining goh-goh yiqilishi
 
-**GitHub Actions'da `Test` qadami goh-goh yiqilyapti**, lokalda esa 54/54 test o'tadi.
-Tayyor branch: `fix/ci-test-step` (PR ochilishi kerak).
+PR #1 (`fix/ci-test-step`) `main` ga merge qilindi — `c0e9b48`.
 
 2026-08-05 dagi tekshiruv nimani ko'rsatdi:
 
@@ -36,29 +35,36 @@ Tayyor branch: `fix/ci-test-step` (PR ochilishi kerak).
   matritsa). Ya'ni ayb kod mantiqida emas — vaqt/parallellikda.
 - Yiqilgan `Test` qadami har ikkalasida ham **5 soniya**, o'tganida — 3 soniya.
   Demak timeout emas, tez yiqilish.
-- Chetlab o'tilgan taxminlar: `packages/shared/dist`, CI env kalitlari,
-  Postgres/Redis versiyalari (ikkalasida ham `17-alpine` / `7-alpine`),
-  `kidir_test` bazasi (hech qayerda ishlatilmaydi), seed bog'liqligi
-  (OTP spec config qatorlarini o'zi yozadi).
 - Lokalda ketma-ket 10 ta run va 1.5s qattiq timeout bilan ham takrorlanmadi.
 
-**Aniq sabab hali noma'lum — log matni kerak.** Actions log'lari public repo'da ham
-auth so'raydi (`403`). Shuning uchun `fix/ci-test-step` da:
+Qabul qilingan chora (diagnoz emas, himoya):
 
-1. `Test` qadami chiqishi `$GITHUB_STEP_SUMMARY` ga yoziladi → keyingi yiqilish
-   run sahifasida **auth'siz** o'qiladi.
-2. `apps/api` testlari `--runInBand` bilan (ikkala spec bitta Postgres/Redis ustida
-   raqobatlashmasin) va `testTimeout: 30000` bilan — bu **himoya chorasi, diagnoz emas**.
+1. `Test` qadami chiqishi `$GITHUB_STEP_SUMMARY` ga yoziladi → agar yana yiqilsa,
+   log run sahifasida **auth'siz** o'qiladi.
+2. `apps/api` testlari `--runInBand` bilan (barcha speclar bitta Postgres/Redis
+   ustida raqobatlashmasin) va `testTimeout: 30000` bilan.
 
-Log'ni to'g'ridan-to'g'ri o'qish uchun (tavsiya):
+> **Diqqat:** `--runInBand` endi majburiy — To'lqin 3 da spec fayllar soni 2 dan
+> 16 ga chiqdi va hammasi bitta bazani baham ko'radi. Yangi worktree ochsangiz
+> yoki eski branch'da ishlasangiz, `apps/api/package.json` dagi test skripti
+> `--runInBand` bilanligiga ishonch hosil qiling.
+
+Eski yiqilgan run'lar (tarix uchun): 30975007112, 30977109697.
+
+### ⚠️ Windows: Smart App Control native modullarni bloklashi mumkin
+
+2026-08-06 da Smart App Control enforcement rejimiga o'tib, `argon2` ning tayyor
+binary'sini blokladi. Alomat aldamchi: `npm install` node-gyp bilan manbadan
+qurishga o'tadi va **"Python topilmadi"** deb yiqiladi — Python o'rnatish yechim
+EMAS. Tekshirish:
 
 ```bat
-winget install --id GitHub.cli
+node -e "require('argon2'); console.log('argon2 OK')"
 ```
 
-keyin Claude sessiyasida `! gh auth login` → `gh run view <run-id> --log-failed`.
-
-Yiqilgan run'lar: 30975007112, 30977109697.
+`An Application Control policy has blocked this file` chiqsa → Windows Security →
+App & browser control → Smart App Control settings → **Off** (bir tomonlama:
+qayta yoqish uchun Windows reset kerak).
 
 ---
 
@@ -105,19 +111,18 @@ Sening rolingda: `packages/shared/**`, `apps/api/prisma/**`, `app.module.ts`,
 `main.ts`, `package.json`, `docs/**` senga tegishli — feature terminallar bularga
 tegmaydi. Merge'ni ham sen qilasan.
 
-Birinchi vazifa: CI'dagi `Test` qadami nega yiqilayotganini aniqlash
-(`docs/DAVOM-ETTIRISH.md` dagi "Ochiq muammo" bo'limi). Keyin To'lqin 3 ni
-boshlaymiz. Menga o'zbek tilida javob ber.
+Birinchi vazifa: To'lqin 3 ni boshqarish — TEST va AUDIT terminallari ishini
+kuzatish, tugagach merge qilish. Menga o'zbek tilida javob ber.
 
 ---
 
 ---
 
-## 4. To'lqin 3 terminallarini ishga tushirish
+## 4. To'lqin 3 terminallari (HOZIR ISHLAYAPTI)
 
 Bu ikkitasi **parallel** ishlaydi, bir-biriga tegmaydi.
 
-### TEST terminali
+### TEST terminali — `..\kidir-test`, branch `test/phase-1-coverage`
 
 ```bat
 cd C:\Users\Aziz\Desktop\kidir
@@ -131,7 +136,10 @@ claude
 
 Prompt: `docs/phase-1-briefs/05-test.md` faylidagi "Prompt" bo'limi.
 
-### AUDIT terminali (xavfsizlik + code review)
+> Test yurgizish uchun Docker ko'tarilgan bo'lishi SHART (`docker compose up -d`) —
+> Prisma mock qilinmaydi, testlar haqiqiy Postgres va Redis'ga boradi.
+
+### AUDIT terminali — `..\kidir-audit`, branch `audit/phase-1`
 
 ```bat
 cd C:\Users\Aziz\Desktop\kidir
@@ -147,26 +155,30 @@ Prompt: `docs/phase-1-briefs/06-audit.md` faylidagi "Prompt" bo'limi.
 > **Muhim:** o'tgan safar ikkita terminal ishni **commit qilmay** qoldirgan edi.
 > Promptga qo'shimcha qilib ayting: "tugagach ishingni albatta commit qil".
 
+### To'lqin 3 tugagach (ORKESTR qiladi)
+
+1. `test/phase-1-coverage` ni `main` ga merge (faqat spec fayllar — konflikt yo'q).
+2. AUDIT hisobotlarini (`docs/reviews/phase-1-*.md`) o'qib, topilmalarni fix
+   vazifalariga taqsimlash.
+3. Har merge'dan keyin `npm run lint && npm run typecheck && npm run test`,
+   so'ng **ilovani haqiqatan ko'tarib ko'rish**.
+4. Worktree'larni tozalash (5-bo'lim).
+
 ---
 
 ## 5. Tugagan worktree'larni tozalash
 
-To'lqin 2 terminallari (backend, infra, frontend) ishini tugatgan va merge qilingan —
-ularni o'chirsa bo'ladi:
+To'lqin 2 terminallari (backend, infra, frontend) tozalangan — worktree'lari
+o'chirilgan, branchlari `main` ga merge bo'lgani uchun olib tashlangan.
+
+To'lqin 3 tugagach xuddi shunday qiling:
 
 ```bat
 cd C:\Users\Aziz\Desktop\kidir
-git worktree remove ..\kidir-backend
-git worktree remove ..\kidir-infra
-git worktree remove ..\kidir-frontend
+git worktree remove ..\kidir-test
+git worktree remove ..\kidir-audit
+git branch -d test/phase-1-coverage audit/phase-1
 git worktree list
-```
-
-Branchlar `main` ga merge qilingani uchun ularni ham o'chirish mumkin:
-
-```bat
-git branch -d feature/phase-1-auth-core feature/phase-1-providers feature/phase-1-web-auth-ui
-git branch -d feature/phase-0-skeleton feature/phase-1-foundation
 ```
 
 ---

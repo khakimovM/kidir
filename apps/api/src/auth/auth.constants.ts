@@ -9,6 +9,17 @@ export const ACCESS_COOKIE = "kidir_at";
 export const REFRESH_COOKIE = "kidir_rt";
 
 /**
+ * Ties a Google callback to the browser that started the flow.
+ *
+ * Server-side `state` alone only proves the value came from us, not that this
+ * callback belongs to the same browser — an attacker can start their own flow
+ * and hand the victim the resulting URL. Scoped to the two Google routes so it
+ * is not sent with anything else.
+ */
+export const OAUTH_STATE_COOKIE = "kidir_oas";
+export const OAUTH_STATE_COOKIE_PATH = "/auth/google";
+
+/**
  * The refresh cookie is scoped as tightly as it can be while still reaching
  * every route that needs it: `/auth/refresh` rotates it and `/auth/logout`
  * revokes it, so `/auth` is the narrowest common prefix. A wider path would

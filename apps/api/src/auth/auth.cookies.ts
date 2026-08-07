@@ -3,6 +3,9 @@ import { env } from "../config/env";
 import {
   ACCESS_COOKIE,
   ACCESS_TOKEN_TTL_SECONDS,
+  OAUTH_STATE_COOKIE,
+  OAUTH_STATE_COOKIE_PATH,
+  OAUTH_STATE_TTL_SECONDS,
   REFRESH_COOKIE,
   REFRESH_COOKIE_PATH,
   REFRESH_TOKEN_TTL_SECONDS,
@@ -52,6 +55,28 @@ export function setAuthCookies(response: Response, tokens: IssuedTokens): void {
 export function clearAuthCookies(response: Response): void {
   response.clearCookie(ACCESS_COOKIE, { ...baseCookieOptions(), path: "/" });
   response.clearCookie(REFRESH_COOKIE, { ...baseCookieOptions(), path: REFRESH_COOKIE_PATH });
+}
+
+/**
+ * The browser half of the Google `state` check.
+ *
+ * SameSite=Lax rather than Strict on purpose: the callback arrives as a
+ * top-level navigation from accounts.google.com, and Strict would withhold the
+ * cookie on exactly that request, breaking every sign-in.
+ */
+export function setOauthStateCookie(response: Response, state: string): void {
+  response.cookie(OAUTH_STATE_COOKIE, state, {
+    ...baseCookieOptions(),
+    path: OAUTH_STATE_COOKIE_PATH,
+    maxAge: OAUTH_STATE_TTL_SECONDS * 1000,
+  });
+}
+
+export function clearOauthStateCookie(response: Response): void {
+  response.clearCookie(OAUTH_STATE_COOKIE, {
+    ...baseCookieOptions(),
+    path: OAUTH_STATE_COOKIE_PATH,
+  });
 }
 
 /**

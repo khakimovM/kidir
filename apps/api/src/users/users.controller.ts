@@ -1,19 +1,17 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch } from "@nestjs/common";
 import type { PublicUser, SessionUser } from "@kidir/shared";
-import { JwtGuard } from "../common/guards/jwt.guard";
-import { RolesGuard } from "../common/guards/roles.guard";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../common/guards/authenticated-user";
 import { UsersService } from "./users.service";
 import { UpdateProfileDto } from "./dto/update-profile.dto";
 
 /**
- * Both routes are authenticated: profiles are visible to signed-in users, not
- * to the open internet, so scraping the worker base costs an account.
- * No `@Roles(...)` — every role has a profile — but `RolesGuard` still runs,
- * which is what stops a suspended account from editing itself.
+ * Neither route says `@Public()`, so both are authenticated by the global
+ * guards: profiles are visible to signed-in users, not to the open internet,
+ * so scraping the worker base costs an account. No `@Roles(...)` — every role
+ * has a profile — but `RolesGuard` still runs, which is what stops a suspended
+ * account from editing itself.
  */
-@UseGuards(JwtGuard, RolesGuard)
 @Controller("users")
 export class UsersController {
   constructor(private readonly users: UsersService) {}

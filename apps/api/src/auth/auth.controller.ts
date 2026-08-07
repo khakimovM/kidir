@@ -1,20 +1,7 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Post,
-  Query,
-  Req,
-  Res,
-  UseGuards,
-} from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, Res } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import type { AuthResponse, OtpRequestResponse, SessionUser } from "@kidir/shared";
-import { JwtGuard } from "../common/guards/jwt.guard";
-import { RolesGuard } from "../common/guards/roles.guard";
 import { Public } from "../common/decorators/public.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../common/guards/authenticated-user";
@@ -40,12 +27,12 @@ const authThrottle = Throttle({
 });
 
 /**
- * Guards are applied at the class level so authentication is the default and
- * every anonymous route has to say `@Public()` out loud. Tokens never appear
- * in a response body — they are written straight to httpOnly cookies here, and
- * the body carries only the session user (`zAuthResponse`).
+ * Authentication is the application-wide default (`GuardsModule` registers the
+ * guards as APP_GUARD), so every anonymous route here has to say `@Public()`
+ * out loud. Tokens never appear in a response body — they are written straight
+ * to httpOnly cookies here, and the body carries only the session user
+ * (`zAuthResponse`).
  */
-@UseGuards(JwtGuard, RolesGuard)
 @Controller("auth")
 export class AuthController {
   constructor(

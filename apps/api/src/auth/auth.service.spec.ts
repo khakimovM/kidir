@@ -1,7 +1,9 @@
-import { JwtModule } from "@nestjs/jwt";
+import { JwtModule, JwtService } from "@nestjs/jwt";
 import { Test, type TestingModule } from "@nestjs/testing";
+import { Prisma } from "@prisma/client";
 import { ERROR_CODES, type ErrorCode } from "@kidir/shared";
 import { DomainException } from "../common/exceptions/domain.exception";
+import { env } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { OtpService, type OtpChannel, type OtpIssueResult } from "../otp/otp.contract";
 import { UsersService } from "../users/users.service";
@@ -60,6 +62,7 @@ describe("AuthService", () => {
   let tokens: TokenService;
   let users: UsersService;
   let prisma: PrismaService;
+  let jwt: JwtService;
   let otp: FakeOtpService;
 
   const createdUserIds: string[] = [];
@@ -87,6 +90,7 @@ describe("AuthService", () => {
     tokens = moduleRef.get(TokenService);
     users = moduleRef.get(UsersService);
     prisma = moduleRef.get(PrismaService);
+    jwt = moduleRef.get(JwtService);
   });
 
   afterAll(async () => {
@@ -132,6 +136,17 @@ describe("AuthService", () => {
     createdUserIds.push(session.user.id);
 
     return { userId: session.user.id, phone, email, refreshToken: session.tokens.refreshToken };
+  }
+
+  /** Whatever was thrown, without insisting on a kind. */
+  async function captureError(run: () => Promise<unknown>): Promise<unknown> {
+    try {
+      await run();
+    } catch (error) {
+      return error;
+    }
+
+    throw new Error("xato kutilgan edi, lekin tashlanmadi");
   }
 
   async function captureDomainError(run: () => Promise<unknown>): Promise<DomainException> {
@@ -345,6 +360,140 @@ describe("AuthService", () => {
         ERROR_CODES.INVALID_CREDENTIALS,
       );
     });
+
+    /**
+     * A stored hash that argon2 cannot parse must read as "wrong password".
+     * Letting the parse error escape would turn a corrupted row into a 500 —
+     * and a 500 on one account and a 401 on every other is an oracle.
+     */
+    it("treats an unparseable stored hash as a wrong password", async () => {
+      const account = await registerAccount();
+      await prisma.user.update({
+        where: { id: account.userId },
+        data: { passwordHash: "bu-argon2-hash-emas" },
+      });
+
+      const corrupted = await expectDomainError(
+        () => auth.login({ identifier: account.phone, password: PASSWORD }, CONTEXT),
+        ERROR_CODES.INVALID_CREDENTIALS,
+      );
+
+      expect(corrupted.getStatus()).toBe(401);
+    });
+
+    it("trims the identifier before deciding whether it is a phone", async () => {
+      const account = await registerAccount();
+
+      const session = await auth.login(
+        { identifier: `  ${account.phone}  `, password: PASSWORD },
+        CONTEXT,
+      );
+
+      expect(session.user.id).toBe(account.userId);
+    });
+  });
+
+  // --- the unique index as the real arbiter --------------------------------
+
+  /**
+   * The availability checks in `register` are a courtesy, not a lock: they
+   * filter on `deletedAt: null`, while the unique index does not. A row left
+   * behind by a soft delete therefore still owns the value, and the constraint
+   * violation has to surface as the same domain error rather than a 500.
+   */
+  describe("collisions the availability check cannot see", () => {
+    async function softDeleted(): Promise<TestAccount> {
+      const account = await registerAccount();
+      await prisma.user.update({ where: { id: account.userId }, data: { deletedAt: new Date() } });
+      return account;
+    }
+
+    it("reports a phone still held by a soft-deleted account", async () => {
+      const account = await softDeleted();
+      await auth.verifyPhoneOtp({ phone: account.phone, code: VALID_CODE });
+
+      await expectDomainError(
+        () =>
+          auth.register(
+            {
+              phone: account.phone,
+              email: `kidir.test.${uniqueSuffix()}@example.com`,
+              password: PASSWORD,
+              fullName: "Test Foydalanuvchi",
+              role: "CLIENT",
+            },
+            CONTEXT,
+          ),
+        ERROR_CODES.PHONE_ALREADY_REGISTERED,
+      );
+    });
+
+    it("reports an email still held by a soft-deleted account", async () => {
+      const account = await softDeleted();
+      const phone = `+998${uniqueSuffix()}`;
+      await auth.verifyPhoneOtp({ phone, code: VALID_CODE });
+
+      await expectDomainError(
+        () =>
+          auth.register(
+            {
+              phone,
+              email: account.email,
+              password: PASSWORD,
+              fullName: "Test Foydalanuvchi",
+              role: "CLIENT",
+            },
+            CONTEXT,
+          ),
+        ERROR_CODES.EMAIL_ALREADY_REGISTERED,
+      );
+    });
+
+    /**
+     * Only a unique-constraint violation is translated. Anything else is a
+     * genuine fault, and dressing it up as a conflict would hide a broken
+     * database behind a 409 the client would keep retrying.
+     */
+    it("lets a database error that is not a unique violation through untouched", async () => {
+      const phone = `+998${uniqueSuffix()}`;
+      await auth.verifyPhoneOtp({ phone, code: VALID_CODE });
+
+      const failure = await captureError(() =>
+        auth.attachPhone("0193b7f0-0000-7000-8000-0000000000bb", { phone }),
+      );
+
+      expect(failure).not.toBeInstanceOf(DomainException);
+      expect(failure).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+    });
+
+    /**
+     * Any other unique column has no tailored message, so it must still leave
+     * as a conflict rather than an unhandled Prisma error.
+     */
+    it("reports a google id still held by a soft-deleted account as a plain conflict", async () => {
+      const suffix = uniqueSuffix();
+      const googleId = `google-${suffix}`;
+
+      const first = await auth.loginWithGoogle(
+        { googleId, email: `kidir.google.${suffix}@example.com`, fullName: "Google Mijoz" },
+        CONTEXT,
+      );
+      createdUserIds.push(first.user.id);
+      await prisma.user.update({ where: { id: first.user.id }, data: { deletedAt: new Date() } });
+
+      await expectDomainError(
+        () =>
+          auth.loginWithGoogle(
+            {
+              googleId,
+              email: `kidir.google.${uniqueSuffix()}@example.com`,
+              fullName: "Google Mijoz",
+            },
+            CONTEXT,
+          ),
+        ERROR_CODES.CONFLICT,
+      );
+    });
   });
 
   // --- refresh rotation ----------------------------------------------------
@@ -442,6 +591,67 @@ describe("AuthService", () => {
 
       await expectDomainError(
         () => auth.refresh(account.refreshToken, CONTEXT),
+        ERROR_CODES.REFRESH_TOKEN_INVALID,
+      );
+    });
+
+    /**
+     * The signature proves the token was minted here; it says nothing about
+     * whether the account still exists. A session must die with the account,
+     * not at the token's expiry.
+     */
+    it("rejects a rotation for an account soft-deleted mid-session", async () => {
+      const account = await registerAccount();
+      await prisma.user.update({ where: { id: account.userId }, data: { deletedAt: new Date() } });
+
+      await expectDomainError(
+        () => auth.refresh(account.refreshToken, CONTEXT),
+        ERROR_CODES.REFRESH_TOKEN_INVALID,
+      );
+    });
+
+    it("rejects a correctly signed token whose subject is not a string", async () => {
+      const forged = jwt.sign(
+        { sub: 42, fam: "0193b7f0-0000-7000-8000-000000000001" },
+        { secret: env.JWT_REFRESH_SECRET, expiresIn: 60 },
+      );
+
+      await expectDomainError(
+        () => auth.refresh(forged, CONTEXT),
+        ERROR_CODES.REFRESH_TOKEN_INVALID,
+      );
+    });
+
+    it("rejects a token signed with the access secret", async () => {
+      const account = await registerAccount();
+      const wrongSecret = jwt.sign(
+        { sub: account.userId },
+        { secret: env.JWT_ACCESS_SECRET, expiresIn: 60 },
+      );
+
+      await expectDomainError(
+        () => auth.refresh(wrongSecret, CONTEXT),
+        ERROR_CODES.REFRESH_TOKEN_INVALID,
+      );
+    });
+
+    /**
+     * The row is found by the digest of the presented token, so a token whose
+     * `sub` names a different user must not be able to rotate somebody else's
+     * row even though both are validly signed.
+     */
+    it("rejects a token whose subject does not own the row", async () => {
+      const owner = await registerAccount();
+      const other = await registerAccount();
+      const rows = await prisma.refreshToken.findMany({ where: { userId: owner.userId } });
+
+      await prisma.refreshToken.updateMany({
+        where: { id: { in: rows.map((row) => row.id) } },
+        data: { userId: other.userId },
+      });
+
+      await expectDomainError(
+        () => auth.refresh(owner.refreshToken, CONTEXT),
         ERROR_CODES.REFRESH_TOKEN_INVALID,
       );
     });
@@ -579,6 +789,75 @@ describe("AuthService", () => {
         () => auth.attachPhone(account.userId, { phone: other.phone }),
         ERROR_CODES.PHONE_ALREADY_REGISTERED,
       );
+    });
+
+    /**
+     * The completion of the Google path: such an account arrives with no phone
+     * at all, and SMS verification is mandatory for everyone (docs/PLAN.md
+     * 3.5-B), so this is the only way it becomes usable.
+     */
+    it("records the phone and raises kycLevel once the code was verified", async () => {
+      const suffix = uniqueSuffix();
+      const session = await auth.loginWithGoogle(
+        {
+          googleId: `google-${suffix}`,
+          email: `kidir.google.${suffix}@example.com`,
+          fullName: "Google Mijoz",
+        },
+        CONTEXT,
+      );
+      createdUserIds.push(session.user.id);
+      expect(session.user.phone).toBeNull();
+
+      const phone = `+998${uniqueSuffix()}`;
+      await auth.verifyPhoneOtp({ phone, code: VALID_CODE });
+
+      const attached = await auth.attachPhone(session.user.id, { phone });
+
+      expect(attached.phone).toBe(phone);
+      expect(attached.phoneVerified).toBe(true);
+      expect(attached.kycLevel).toBe("PHONE");
+      // Google already settled the email, so the account is now complete.
+      expect(attached.onboardingComplete).toBe(true);
+    });
+
+    it("lets an account re-attach the phone it already holds", async () => {
+      const account = await registerAccount();
+      await auth.verifyPhoneOtp({ phone: account.phone, code: VALID_CODE });
+
+      const attached = await auth.attachPhone(account.userId, { phone: account.phone });
+
+      expect(attached.phone).toBe(account.phone);
+    });
+
+    it("consumes the verification, so the same code cannot attach a phone twice", async () => {
+      const account = await registerAccount();
+      const phone = `+998${uniqueSuffix()}`;
+
+      await auth.verifyPhoneOtp({ phone, code: VALID_CODE });
+      await auth.attachPhone(account.userId, { phone });
+
+      await expectDomainError(
+        () => auth.attachPhone(account.userId, { phone }),
+        ERROR_CODES.OTP_NOT_VERIFIED,
+      );
+    });
+  });
+
+  // --- phone OTP -----------------------------------------------------------
+
+  describe("requestPhoneOtp", () => {
+    /**
+     * Deliberately not an "is this number registered?" oracle: the collision is
+     * reported by `register`, after the caller has proved they own the number.
+     */
+    it("issues a code without revealing whether the number is taken", async () => {
+      const existing = await registerAccount();
+
+      const forTaken = await auth.requestPhoneOtp({ phone: existing.phone });
+      const forFree = await auth.requestPhoneOtp({ phone: `+998${uniqueSuffix()}` });
+
+      expect(forTaken).toEqual(forFree);
     });
   });
 

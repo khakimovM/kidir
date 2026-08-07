@@ -6,7 +6,7 @@ import { DomainException } from "../common/exceptions/domain.exception";
 import { REDIS_CLIENT, redisKey } from "../redis/redis.constants";
 import { env } from "../config/env";
 import { OAUTH_STATE_TTL_SECONDS } from "./auth.constants";
-import { randomToken } from "./auth.crypto";
+import { randomToken, timingSafeEqualString } from "./auth.crypto";
 import { AuthService, type SessionResult } from "./auth.service";
 import type { SessionContext } from "./token.service";
 
@@ -48,13 +48,17 @@ export class GoogleAuthService {
   ) {}
 
   /**
-   * Mints a single-use `state` and returns where to send the browser.
+   * Mints a single-use `state` and returns where to send the browser, plus the
+   * value the caller must also write to the browser as a cookie.
    *
-   * `state` is the CSRF defence for the callback: without it an attacker can
-   * feed the victim's browser their own authorization code and silently link
-   * the victim's session to the attacker's Google account.
+   * `state` is the CSRF defence for the callback, and it only works if it
+   * proves two separate things: that the value came from us (Redis) and that
+   * this callback belongs to the browser that started the flow (the cookie).
+   * With the server side alone, an attacker can run the flow themselves, hold
+   * on to their own `code`, and send the victim a callback URL — the victim's
+   * browser then ends up holding the attacker's session.
    */
-  async buildAuthorizationUrl(): Promise<string> {
+  async buildAuthorizationUrl(): Promise<{ url: string; state: string }> {
     const config = this.requireConfig();
     const state = randomToken(32);
 
@@ -68,15 +72,17 @@ export class GoogleAuthService {
     url.searchParams.set("state", state);
     url.searchParams.set("prompt", "select_account");
 
-    return url.toString();
+    return { url: url.toString(), state };
   }
 
   async handleCallback(
     code: string,
     state: string,
+    cookieState: string | undefined,
     context: SessionContext,
   ): Promise<SessionResult> {
     const config = this.requireConfig();
+    this.assertStateMatchesBrowser(state, cookieState);
     await this.consumeState(state);
 
     const accessToken = await this.exchangeCode(config, code);
@@ -100,6 +106,23 @@ export class GoogleAuthService {
       },
       context,
     );
+  }
+
+  /**
+   * The browser half of the check, run before Redis is touched so a forged
+   * callback cannot burn a `state` the real user is still about to use.
+   *
+   * Compared in constant time: the values are equal-length hex tokens, and a
+   * length-dependent comparison would leak how much of a guess was right.
+   */
+  private assertStateMatchesBrowser(state: string, cookieState: string | undefined): void {
+    if (cookieState === undefined || !timingSafeEqualString(state, cookieState)) {
+      throw new DomainException(
+        ERROR_CODES.OAUTH_STATE_INVALID,
+        "Google javobi tasdiqlanmadi, qaytadan urinib ko'ring",
+        HttpStatus.FORBIDDEN,
+      );
+    }
   }
 
   /** GETDEL is what makes the state single-use: a replay finds nothing. */

@@ -130,15 +130,21 @@ describe("GoogleAuthService", () => {
     throw new Error(`${code} kutilgan edi, lekin xato tashlanmadi`);
   }
 
-  /** Mints a real state through the service, the way the browser flow does. */
+  /**
+   * Mints a real state through the service, the way the browser flow does, and
+   * checks on the way past that the value handed to the caller for the cookie
+   * is the same one Google is asked to echo back — if those ever diverged,
+   * every sign-in would fail the match.
+   */
   async function issuedState(): Promise<string> {
-    const url = new URL(await service.buildAuthorizationUrl());
-    const state = url.searchParams.get("state");
+    const issued = await service.buildAuthorizationUrl();
+    const state = new URL(issued.url).searchParams.get("state");
 
     if (state === null) {
       throw new Error("authorization url'da state yo'q");
     }
 
+    expect(issued.state).toBe(state);
     return state;
   }
 
@@ -146,7 +152,7 @@ describe("GoogleAuthService", () => {
 
   describe("buildAuthorizationUrl", () => {
     it("sends the browser to Google with the configured client and callback", async () => {
-      const url = new URL(await service.buildAuthorizationUrl());
+      const url = new URL((await service.buildAuthorizationUrl()).url);
 
       expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
       expect(url.searchParams.get("client_id")).toBe("kidir-client-id");
@@ -202,7 +208,7 @@ describe("GoogleAuthService", () => {
     it("signs the caller in with the profile Google vouched for", async () => {
       const state = await issuedState();
 
-      await service.handleCallback("auth-code", state, CONTEXT);
+      await service.handleCallback("auth-code", state, state, CONTEXT);
 
       expect(auth.calls).toHaveLength(1);
       expect(auth.calls[0]?.profile).toEqual({
@@ -219,7 +225,7 @@ describe("GoogleAuthService", () => {
       outcomes.userinfo.body = { sub: "google-sub-2", email: "mijoz@example.com" };
       const state = await issuedState();
 
-      await service.handleCallback("auth-code", state, CONTEXT);
+      await service.handleCallback("auth-code", state, state, CONTEXT);
 
       expect(auth.calls[0]?.profile.fullName).toBe("mijoz@example.com");
     });
@@ -227,7 +233,7 @@ describe("GoogleAuthService", () => {
     it("exchanges the code at the token endpoint before reading the profile", async () => {
       const state = await issuedState();
 
-      await service.handleCallback("auth-code", state, CONTEXT);
+      await service.handleCallback("auth-code", state, state, CONTEXT);
 
       expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(TOKEN_URL);
       expect(String(fetchSpy.mock.calls[1]?.[0])).toBe(USERINFO_URL);
@@ -239,7 +245,7 @@ describe("GoogleAuthService", () => {
     describe("state validation", () => {
       it("refuses a state nobody issued", async () => {
         await expectDomainError(
-          () => service.handleCallback("auth-code", "o'ylab-topilgan", CONTEXT),
+          () => service.handleCallback("auth-code", "o'ylab-topilgan", "o'ylab-topilgan", CONTEXT),
           ERROR_CODES.OAUTH_STATE_INVALID,
           403,
         );
@@ -251,10 +257,10 @@ describe("GoogleAuthService", () => {
       it("refuses the second use of a state", async () => {
         const state = await issuedState();
 
-        await service.handleCallback("auth-code", state, CONTEXT);
+        await service.handleCallback("auth-code", state, state, CONTEXT);
 
         await expectDomainError(
-          () => service.handleCallback("auth-code", state, CONTEXT),
+          () => service.handleCallback("auth-code", state, state, CONTEXT),
           ERROR_CODES.OAUTH_STATE_INVALID,
           403,
         );
@@ -266,10 +272,59 @@ describe("GoogleAuthService", () => {
         env.GOOGLE_CLIENT_ID = undefined;
 
         await expectDomainError(
-          () => service.handleCallback("auth-code", "har-qanday", CONTEXT),
+          () => service.handleCallback("auth-code", "har-qanday", "har-qanday", CONTEXT),
           ERROR_CODES.INTERNAL_ERROR,
           503,
         );
+      });
+
+      /**
+       * The attack the cookie exists for: the attacker runs the flow, keeps
+       * their own `code`, and hands the victim the callback URL. The state is
+       * genuine and unused, so the server side alone would accept it and the
+       * victim's browser would end up holding the attacker's session.
+       */
+      it("refuses a genuine state that arrives without the browser that started the flow", async () => {
+        const state = await issuedState();
+
+        await expectDomainError(
+          () => service.handleCallback("auth-code", state, undefined, CONTEXT),
+          ERROR_CODES.OAUTH_STATE_INVALID,
+          403,
+        );
+
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(auth.calls).toHaveLength(0);
+      });
+
+      it("refuses a state that does not match the browser's cookie", async () => {
+        const state = await issuedState();
+        const otherState = await issuedState();
+
+        await expectDomainError(
+          () => service.handleCallback("auth-code", state, otherState, CONTEXT),
+          ERROR_CODES.OAUTH_STATE_INVALID,
+          403,
+        );
+
+        expect(auth.calls).toHaveLength(0);
+      });
+
+      /**
+       * A forged callback must not be able to burn a state the real user is
+       * still about to use, so the cookie is checked before Redis is touched.
+       */
+      it("leaves the state usable after a mismatched attempt", async () => {
+        const state = await issuedState();
+
+        await expectDomainError(
+          () => service.handleCallback("auth-code", state, "boshqa-qiymat", CONTEXT),
+          ERROR_CODES.OAUTH_STATE_INVALID,
+          403,
+        );
+
+        await service.handleCallback("auth-code", state, state, CONTEXT);
+        expect(auth.calls).toHaveLength(1);
       });
     });
 
@@ -279,7 +334,7 @@ describe("GoogleAuthService", () => {
         const state = await issuedState();
 
         await expectDomainError(
-          () => service.handleCallback("auth-code", state, CONTEXT),
+          () => service.handleCallback("auth-code", state, state, CONTEXT),
           ERROR_CODES.OAUTH_STATE_INVALID,
           502,
         );
@@ -290,7 +345,7 @@ describe("GoogleAuthService", () => {
         const state = await issuedState();
 
         await expectDomainError(
-          () => service.handleCallback("auth-code", state, CONTEXT),
+          () => service.handleCallback("auth-code", state, state, CONTEXT),
           ERROR_CODES.OAUTH_STATE_INVALID,
           502,
         );
@@ -301,7 +356,7 @@ describe("GoogleAuthService", () => {
         const state = await issuedState();
 
         await expectDomainError(
-          () => service.handleCallback("auth-code", state, CONTEXT),
+          () => service.handleCallback("auth-code", state, state, CONTEXT),
           ERROR_CODES.OAUTH_STATE_INVALID,
           502,
         );
@@ -312,7 +367,7 @@ describe("GoogleAuthService", () => {
         const state = await issuedState();
 
         await expectDomainError(
-          () => service.handleCallback("auth-code", state, CONTEXT),
+          () => service.handleCallback("auth-code", state, state, CONTEXT),
           ERROR_CODES.OAUTH_STATE_INVALID,
           502,
         );
@@ -323,7 +378,7 @@ describe("GoogleAuthService", () => {
         const state = await issuedState();
 
         await expectDomainError(
-          () => service.handleCallback("auth-code", state, CONTEXT),
+          () => service.handleCallback("auth-code", state, state, CONTEXT),
           ERROR_CODES.OAUTH_STATE_INVALID,
         );
 
@@ -345,7 +400,7 @@ describe("GoogleAuthService", () => {
         const state = await issuedState();
 
         await expectDomainError(
-          () => service.handleCallback("auth-code", state, CONTEXT),
+          () => service.handleCallback("auth-code", state, state, CONTEXT),
           ERROR_CODES.OAUTH_EMAIL_MISMATCH,
           400,
         );
@@ -358,7 +413,7 @@ describe("GoogleAuthService", () => {
         outcomes.userinfo.body = { sub: "google-sub-5", email: "mijoz@example.com" };
         const state = await issuedState();
 
-        await service.handleCallback("auth-code", state, CONTEXT);
+        await service.handleCallback("auth-code", state, state, CONTEXT);
 
         expect(auth.calls).toHaveLength(1);
       });

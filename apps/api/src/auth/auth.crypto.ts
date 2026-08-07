@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
  * Refresh tokens are stored only as a digest, so a database dump does not hand
@@ -14,6 +14,17 @@ export function sha256Hex(value: string): string {
 /** URL-safe, 256 bits. Used for OAuth `state`. */
 export function randomToken(byteLength = 32): string {
   return randomBytes(byteLength).toString("base64url");
+}
+
+/**
+ * Constant-time comparison of two secrets that arrive as strings.
+ *
+ * `timingSafeEqual` throws on differing lengths, and returning early on that
+ * would leak the length through timing — so both sides are hashed first, which
+ * makes them the same size whatever came in.
+ */
+export function timingSafeEqualString(a: string, b: string): boolean {
+  return timingSafeEqual(Buffer.from(sha256Hex(a), "hex"), Buffer.from(sha256Hex(b), "hex"));
 }
 
 /**

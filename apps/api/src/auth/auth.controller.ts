@@ -8,8 +8,19 @@ import type { AuthenticatedUser } from "../common/guards/authenticated-user";
 import { env } from "../config/env";
 import { AuthService, type SessionResult } from "./auth.service";
 import { GoogleAuthService } from "./google-auth.service";
-import { AUTH_RATE_LIMIT_PER_MIN, AUTH_RATE_LIMIT_TTL_MS, REFRESH_COOKIE } from "./auth.constants";
-import { clearAuthCookies, readCookie, setAuthCookies } from "./auth.cookies";
+import {
+  AUTH_RATE_LIMIT_PER_MIN,
+  AUTH_RATE_LIMIT_TTL_MS,
+  OAUTH_STATE_COOKIE,
+  REFRESH_COOKIE,
+} from "./auth.constants";
+import {
+  clearAuthCookies,
+  clearOauthStateCookie,
+  readCookie,
+  setAuthCookies,
+  setOauthStateCookie,
+} from "./auth.cookies";
 import type { SessionContext } from "./token.service";
 import {
   GoogleCallbackQueryDto,
@@ -169,7 +180,12 @@ export class AuthController {
   @Public()
   @Get("google")
   async googleStart(@Res() response: Response): Promise<void> {
-    response.redirect(await this.google.buildAuthorizationUrl());
+    const { url, state } = await this.google.buildAuthorizationUrl();
+
+    // The same value goes to Google and to this browser; the callback is only
+    // honoured when the two come back together.
+    setOauthStateCookie(response, state);
+    response.redirect(url);
   }
 
   @Public()
@@ -182,9 +198,13 @@ export class AuthController {
     const session = await this.google.handleCallback(
       query.code,
       query.state,
+      readCookie(request, OAUTH_STATE_COOKIE),
       sessionContext(request),
     );
 
+    // One flow, one state: cleared whether or not the exchange succeeded is
+    // handled by the throw path leaving it to expire on its own TTL.
+    clearOauthStateCookie(response);
     setAuthCookies(response, session.tokens);
     // The web app reads `GET /auth/me` on load and decides where to go from
     // `onboardingComplete`, so the API does not need to know its routes.

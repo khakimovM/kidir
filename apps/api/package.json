@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests --runInBand",
-    "test:e2e": "jest --config test/jest-e2e.json --passWithNoTests",
+    "test:e2e": "jest --config test/jest-e2e.json --passWithNoTests --runInBand",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "seed": "ts-node prisma/seed.ts"

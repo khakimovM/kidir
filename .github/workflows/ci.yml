@@ -110,6 +110,23 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Separate from the unit suites: e2e boots the whole Nest app against the
+      # service containers, and lives under a jest config of its own.
+      - name: Test (e2e)
+        id: e2e
+        run: npm run test:e2e 2>&1 | tee e2e-output.log
+
+      - name: Publish e2e output on failure
+        if: failure() && steps.e2e.outcome == 'failure'
+        run: |
+          {
+            echo '## E2E step output'
+            echo
+            echo '```'
+            tail -n 400 e2e-output.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build
         run: npm run build
 
